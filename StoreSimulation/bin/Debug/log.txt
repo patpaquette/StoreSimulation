@@ -1,0 +1,10 @@
+
+Clients added!
+1 : 01 : 01 - Client0 entered store and buys 1 items
+1 : 03 : 01 - Added Client0 from the wait queue
+1 : 03 : 01 - Client0 is in front of the wait queue
+1 : 03 : 01 - Removed Client0 from the wait queue
+1 : 03 : 01 - Client0 selects SP0
+1 : 03 : 01 - Client0 is in front of SP0
+1 : 04 : 11 - Client0 exits SP0
+1 : 04 : 11 - Client0 left store

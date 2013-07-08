@@ -1,0 +1,237 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using StoreSimulation.SimModels;
+using System.Threading;
+using System.Diagnostics;
+
+namespace StoreSimulation.SimModels
+{
+    public class Simulation
+    {
+        Store store;
+        bool cont;
+        List<ClientStoreArg> client_args;
+        List<SPStoreArg> SP_args;
+        List<QueueStoreArg> queue_args;
+        private readonly object _locker = new Object();
+
+        public Simulation()
+        {
+            this.store = new Store();
+            cont = false;
+            this.client_args = new List<ClientStoreArg>();
+            this.SP_args = new List<SPStoreArg>();
+            this.queue_args = new List<QueueStoreArg>();
+        }
+
+        public void AddClientArgument(ClientStoreArg arg){
+            lock (_locker)
+            {
+                client_args.Add(arg);
+            }
+        }
+
+        public void AddSPArgument(SPStoreArg arg)
+        {
+            lock (_locker)
+            {
+                SP_args.Add(arg);
+            }
+        }
+
+        public void AddQueueArgument(QueueStoreArg arg)
+        {
+            lock (_locker)
+            {
+                //queue_args.Add(arg);
+                this.store.AddQueue(new StoreQueueListImpl(arg.type, arg.queueSize));
+            }
+        }
+
+        public void Start()
+        {
+            cont = true;
+            
+            
+            Stopwatch stopwatch = new Stopwatch();
+            int timeToSleep = -1;
+
+            this.store.init();
+
+            //simulation loop
+            while(cont){
+                stopwatch.Restart();
+                lock (_locker)
+                {
+                    this.addClients(this.client_args);
+                    this.addServicePoints(this.SP_args);
+                }
+;
+
+                //update simulation
+                this.store.Update();
+
+                //System.Diagnostics.Debug.WriteLine(Timer.getTick());
+                Timer.increment();
+
+                timeToSleep = Configs.FRAME_TIME - stopwatch.Elapsed.Milliseconds;
+                if (timeToSleep > 0)
+                {
+                    Thread.Sleep(timeToSleep);
+                }
+                
+
+                if(this.store.isEmpty())
+                {
+                    this.End();
+                }
+            }
+        }
+
+        public void End()
+        {
+            cont = false;
+            Logger.close();
+        }
+
+        public Store getStore()
+        {
+            return this.store;
+        }
+
+        public void setConfigValue(ConfigsList cfg, Object value)
+        {
+            switch (cfg)
+            {
+                case ConfigsList.CLIENT_CHANGE_QUEUE_INTERVAL:
+                    Configs.CLIENT_CHANGE_QUEUE_INTERVAL = (int)value;
+                    break;
+                case ConfigsList.FRAME_TIME:
+                    Configs.FRAME_TIME = (int)value;
+                    break;
+                case ConfigsList.INITIAL_SERVICE_POINTS:
+                    Configs.INITIAL_SERVICE_POINTS = (int)value;
+                    break;
+                case ConfigsList.ITEM_PROCESS_TIME:
+                    Configs.ITEM_PROCESS_TIME = (int)value;
+                    break;
+                case ConfigsList.MAX_CLIENTS_PER_CASH:
+                    Configs.MAX_CLIENTS_PER_CASH = (int)value;
+                    break;
+                case ConfigsList.MAX_QUEUE_SIZE:
+                    Configs.MAX_QUEUE_SIZE = (int)value;
+                    break;
+                case ConfigsList.MAX_SERVICE_POINTS:
+                    Configs.MAX_SERVICE_POINTS = (int)value;
+                    break;
+                case ConfigsList.MIN_SERVICE_POINTS:
+                    Configs.MIN_SERVICE_POINTS = (int)value;
+                    break;
+                case ConfigsList.PAY_TIME:
+                    Configs.PAY_TIME = (int)value;
+                    break;
+                case ConfigsList.SERVICE_ARRIVAL_RATE_THRESHOLD_CLOSE:
+                    Configs.SERVICE_ARRIVAL_RATE_THRESHOLD_CLOSE = (int)value;
+                    break;
+                case ConfigsList.SERVICE_ARRIVAL_RATE_THRESHOLD_OPEN:
+                    Configs.SERVICE_ARRIVAL_RATE_THRESHOLD_OPEN = (int)value;
+                    break;
+                case ConfigsList.SERVICE_IDLE_TIME_CLOSE:
+                    Configs.SERVICE_IDLE_TIME_CLOSE = (int)value;
+                    break;
+                case ConfigsList.SERVICE_MONITOR_INTERVAL:
+                    Configs.SERVICE_MONITOR_INTERVAL = (int)value;
+                    break;
+                case ConfigsList.SUPERVISOR_CHECK_INTERVAL:
+                    Configs.SUPERVISOR_CHECK_INTERVAL = (int)value;
+                    break;
+                case ConfigsList.TICKS_PER_ITEM:
+                    Configs.TICKS_PER_ITEM = (int)value;
+                    break;
+            }
+        }
+
+        public int timeToTicks(int hours, int minutes, int seconds)
+        {
+            return (hours*3600) + (minutes * 60) + seconds;
+        }
+
+        public string timeFromTicks(long ticks)
+        {
+            long hours = (long)(ticks / 3600);
+            long minutes = (long)((ticks - hours * 3600) / 60);
+            long seconds = ticks % 60 ;
+
+            if (seconds == 0)
+                return hours.ToString("0") + " : " + minutes.ToString("00"); //+" : " + seconds.ToString("00");
+
+            return hours.ToString("0") + " : " + minutes.ToString("00") +" : " + seconds.ToString("00");
+        }
+
+        private void addClients(List<ClientStoreArg> l)
+        {
+            List<ClientStoreArg> toRemove_clientsArgs = new List<ClientStoreArg>();
+
+            //clients arguments
+            foreach (ClientStoreArg arg in this.client_args)
+            {
+                //System.Diagnostics.Debug.WriteLine(timeToTicks(arg.entranceHours, arg.entranceMins, arg.entranceSecs));
+                if (timeToTicks(arg.entranceHours, arg.entranceMins, arg.entranceSecs) <= Timer.getTick())
+                {
+                    for (int j = 0; j < arg.numClients; j++)
+                    {
+                        this.store.AddClient(arg.numItems);
+                    }
+
+                    toRemove_clientsArgs.Add(arg);
+                }
+            }
+
+            foreach (ClientStoreArg arg in toRemove_clientsArgs)
+            {
+                this.client_args.Remove(arg);
+            }
+        }
+
+        private void addServicePoints(List<SPStoreArg> l)
+        {
+            List<SPStoreArg> toRemove_SPArgs = new List<SPStoreArg>();
+
+            //service points arguments
+            foreach (SPStoreArg arg in this.SP_args)
+            {
+                if (timeToTicks(arg.entranceHours, arg.entranceMins, arg.entranceSecs) <= Timer.getTick())
+                {
+                    bool done = false;
+
+                    ServicePoint s = this.store.getSupervisor().OpenSpecializedServicePoint(arg.type, arg.maxQueueSize, arg.maxItems, arg.itemProcessingTime, this.getStore().getMainQueue());
+                    toRemove_SPArgs.Add(arg);
+
+                    foreach (StoreQueue q in this.getStore().getWaitQueues())
+                    {
+                        if (q.ToString() == arg.queue_type)
+                        {
+                            q.AddServicePoint(s);
+                            done = true;
+                            break;
+                        }
+                    }
+
+                    if (!done)
+                    {
+                        this.getStore().getMainQueue().AddServicePoint(s);
+                    }
+                }
+
+
+            }
+
+            foreach (SPStoreArg arg in toRemove_SPArgs)
+            {
+                SP_args.Remove(arg);
+            }
+        }
+    }
+}
